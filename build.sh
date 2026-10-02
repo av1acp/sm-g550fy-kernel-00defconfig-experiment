@@ -21,7 +21,9 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 ARCH=arm
-DEFCONFIG=o5lteswa_00_defconfig
+# Defconfig is overridable so an experiment can build from a DIFFERENT config
+# file than the one this branch was originally tuned against.
+DEFCONFIG="${DEFCONFIG:-o5lteswa_00_defconfig}"
 LOCALVER="-13870322"                       # reproduces stock utsrelease
 # KSU BRANCH: KernelSU requires gcc >= 4.9 (their static_assert), so this
 # branch builds with arm-eabi-4.9 (burstlam mirror; ELF x86-64 verified).

@@ -39,6 +39,9 @@ jobs:
           TOOLCHAIN_DIR: ${{ github.workspace }}/toolchains/arm-eabi-4.9
           KBUILD_BUILD_USER: github-actions
           KBUILD_BUILD_HOST: runner
+          # Experiment: build from the user-supplied config fragment instead of
+          # the branch's own o5lteswa_00_defconfig.
+          DEFCONFIG: user_o5lteswa_00_defconfig
         run: ./build.sh
 
       - name: Upload kernel artifact
