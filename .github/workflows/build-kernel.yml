@@ -1,0 +1,60 @@
+name: Build kernel (SM-G550FY / o5prolte)
+
+on:
+  workflow_dispatch:            # manual trigger only — no surprise runs
+
+# One build at a time; a re-trigger cancels the stale run.
+concurrency:
+  group: kernel-build-fy-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read                # least privilege — nothing is written back
+
+jobs:
+  build:
+    # ubuntu-22.04 is being deprecated (brownouts from 2026-09-17,
+    # unsupported from 2027-04-17) — pin the known-good image instead of -latest.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90         # hard cap so a hang can't burn minutes
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v7.0.1
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -o Acquire::Retries=5
+          sudo apt-get install -y --no-install-recommends bc flex bison
+
+      # ~155 MB arm-eabi-4.9 (KSU needs gcc >= 4.9) — cached after the first run.
+      - name: Cache ARM toolchain
+        uses: actions/cache@v6.1.0
+        with:
+          path: toolchains/arm-eabi-4.9
+          key: arm-eabi-4.9-burstlam-v1
+
+      - name: Build kernel
+        env:
+          TOOLCHAIN_DIR: ${{ github.workspace }}/toolchains/arm-eabi-4.9
+          KBUILD_BUILD_USER: github-actions
+          KBUILD_BUILD_HOST: runner
+        run: ./build.sh
+
+      - name: Upload kernel artifact
+        if: success()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: o5lteswa-kernel-${{ github.run_number }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Upload build log (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: build-log-${{ github.run_number }}
+          path: build.log
+          if-no-files-found: warn
+          retention-days: 14

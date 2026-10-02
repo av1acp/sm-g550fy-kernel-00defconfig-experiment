@@ -1,0 +1,21 @@
+# local build outputs (build.sh)
+/dist/
+/build.log
+/toolchains/
+
+# upstream-style kernel ignores
+*.o
+*.a
+*.ko
+*.so
+*.mod.c
+.*.cmd
+.*.d
+*~
+Module.symvers
+modules.order
+modules.builtin
+.config
+/System.map
+/vmlinux
+*.dtb

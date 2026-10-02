@@ -1,0 +1,87 @@
+name: Build KernelSU Manager (API25 logs fix)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout this repo (contains patched manager files)
+        uses: actions/checkout@v7.0.1
+
+      - name: Checkout KernelSU source
+        uses: actions/checkout@v7.0.1
+        with:
+          repository: backslashxx/KernelSU
+          ref: master
+          path: KernelSU
+
+      - name: Overlay API25-patched manager files
+        run: |
+          set -euo pipefail
+          cp -v manager-api25-patch/manager/app/src/main/java/me/weishu/kernelsu/ui/util/LogEvent.kt \
+                 KernelSU/manager/app/src/main/java/me/weishu/kernelsu/ui/util/LogEvent.kt
+          cp -v manager-api25-patch/manager/app/src/main/java/me/weishu/kernelsu/ui/util/SulogHelper.kt \
+                 KernelSU/manager/app/src/main/java/me/weishu/kernelsu/ui/util/SulogHelper.kt
+          cp -v manager-api25-patch/manager/app/src/main/java/me/weishu/kernelsu/ui/component/miuix/SendLogDialog.kt \
+                 KernelSU/manager/app/src/main/java/me/weishu/kernelsu/ui/component/miuix/SendLogDialog.kt
+          cp -v manager-api25-patch/manager/app/src/main/java/me/weishu/kernelsu/ui/component/material/SendLogBottomSheet.kt \
+                 KernelSU/manager/app/src/main/java/me/weishu/kernelsu/ui/component/material/SendLogBottomSheet.kt
+          echo "== verify zero java.time =="
+          if grep -rn "java\.time" KernelSU/manager/app/src/main/java; then
+            echo "ERROR: java.time still present"; exit 1
+          fi
+          echo "OK"
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v5
+
+      - name: Build manager release APK
+        working-directory: KernelSU/manager
+        env:
+          ANDROID_HOME: ${{ runner.temp }}/android-sdk
+          ANDROID_SDK_ROOT: ${{ runner.temp }}/android-sdk
+        run: |
+          set -euo pipefail
+          mkdir -p "$ANDROID_HOME"
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
+          # AGP downloads the exact compileSdk it needs when this is enabled.
+          echo "android.builder.sdkDownload=true" >> gradle.properties
+          # Accept SDK licences BEFORE gradle runs; AGP's auto-SDK-download
+          # requires them, otherwise it fails with LicenceNotAcceptedException.
+          # Ubuntu runners ship cmdline-tools under a versioned path; find it.
+          SDKMANAGER=$(find "$ANDROID_HOME" /usr/local/lib/android /opt/android-sdk \
+                          -path '*/cmdline-tools/*/bin/sdkmanager' -type f 2>/dev/null | head -1 || true)
+          if [ -z "$SDKMANAGER" ]; then
+            # Fall back to the preinstalled SDK on the hosted image.
+            SDKMANAGER=$(find /usr/local/lib/android/sdk /usr/lib/android-sdk \
+                            -path '*/cmdline-tools/*/bin/sdkmanager' -type f 2>/dev/null | head -1 || true)
+          fi
+          if [ -n "$SDKMANAGER" ]; then
+            yes | "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --licenses >/dev/null 2>&1 || true
+          fi
+          # Also drop the well-known licence hashes in case sdkmanager is absent.
+          mkdir -p "$ANDROID_HOME/licenses"
+          echo 24333f8a63b6825ea9c5514f83c2829b004d1fee > "$ANDROID_HOME/licenses/android-sdk-license"
+          echo 84831b9409646a918e30573bab4c9c91346d8abd > "$ANDROID_HOME/licenses/android-sdk-preview-license"
+          ./gradlew :app:assembleRelease --no-daemon
+          ls -la app/build/outputs/apk/release/
+
+      - name: Upload manager APK
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: kernelsu-manager-api25
+          path: KernelSU/manager/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
